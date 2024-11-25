@@ -33,9 +33,12 @@ return {
 
             score_offset = -3,
 
+            ---@module 'blink_luasnip'
+            ---@type blink_luasnip.Options
             opts = {
                 use_show_condition = false, -- disables filtering completion candidates
                 show_autosnippets = true, 
+                show_ghost_text = false,  -- whether to show a preview of the selected snippet (experimental)
             },
         },
       },

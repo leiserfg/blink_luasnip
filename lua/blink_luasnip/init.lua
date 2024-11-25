@@ -1,3 +1,8 @@
+---@class blink_luasnip.Options
+---@field use_show_condition? boolean Disables filtering completion candidates
+---@field show_autosnippets? boolean Whether to show autosnippets in the completion list
+---@field show_ghost_text? boolean Whether to show a preview of the selected snippet (experimental)
+
 local util = require "vim.lsp.util"
 
 local source = {}
@@ -5,13 +10,16 @@ local source = {}
 local defaults_config = {
   use_show_condition = true,
   show_autosnippets = false,
+  show_ghost_text = false,
 }
 
-function source.new(_, user_config)
-  local config = vim.tbl_deep_extend("keep", user_config, defaults_config)
+---@param user_config blink_luasnip.Options
+function source.new(user_config)
+  local config = vim.tbl_deep_extend("keep", user_config or {}, defaults_config)
   vim.validate {
     use_show_condition = { config.use_show_condition, "boolean" },
     show_autosnippets = { config.show_autosnippets, "boolean" },
+    show_ghost_text = { config.show_ghost_text, "boolean" },
   }
   local self = setmetatable({}, { __index = source })
   self.config = config
@@ -20,6 +28,11 @@ end
 
 local snip_cache = {}
 local doc_cache = {}
+
+-- How whitespace and indentation is handled during completion item insertion.
+-- Ref: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#insertTextMode
+-- Note that blink.cmp only supports `AsIs` for now.
+local INSERT_TEXT_MODE_ASIS = 1
 
 function source.clear_cache()
   snip_cache = {}
@@ -30,6 +43,16 @@ function source.refresh()
   local ft = require("luasnip.session").latest_load_ft
   snip_cache[ft] = nil
   doc_cache[ft] = nil
+end
+
+local function get_snippet_body(snip)
+  local body = {}
+  for _, node in ipairs(snip.nodes) do
+    if type(node.static_text) == "table" then
+      body[#body + 1] = table.concat(node.static_text, "\n")
+    end
+  end
+  return #body == 1 and snip.trigger or table.concat(body, "")
 end
 
 local function get_documentation(snip, data)
@@ -74,7 +97,7 @@ function source:get_completions(ctx, callback)
         local tab, auto = unpack(ele)
         for _, snip in pairs(tab) do
           if not snip.hidden then
-            ft_items[#ft_items + 1] = {
+            local complete_opts = {
               word = snip.trigger,
               label = snip.trigger,
               kind = vim.lsp.protocol.CompletionItemKind.Snippet,
@@ -86,6 +109,16 @@ function source:get_completions(ctx, callback)
                 auto = auto,
               },
             }
+
+            if self.config.show_ghost_text then
+              complete_opts = vim.tbl_extend("error", complete_opts, {
+                insertTextFormat = vim.lsp.protocol.InsertTextFormat.Snippet,
+                insertTextMode = INSERT_TEXT_MODE_ASIS,
+                insertText = get_snippet_body(snip),
+              })
+            end
+
+            ft_items[#ft_items + 1] = complete_opts
           end
         end
       end
