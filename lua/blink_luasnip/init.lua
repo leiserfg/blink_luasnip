@@ -10,7 +10,6 @@ local source = {}
 local defaults_config = {
   use_show_condition = true,
   show_autosnippets = false,
-  show_ghost_text = false,
 }
 
 ---@param user_config blink_luasnip.Options
@@ -19,7 +18,6 @@ function source.new(user_config)
   vim.validate {
     use_show_condition = { config.use_show_condition, "boolean" },
     show_autosnippets = { config.show_autosnippets, "boolean" },
-    show_ghost_text = { config.show_ghost_text, "boolean" },
   }
   local self = setmetatable({}, { __index = source })
   self.config = config
@@ -43,16 +41,6 @@ function source.refresh()
   local ft = require("luasnip.session").latest_load_ft
   snip_cache[ft] = nil
   doc_cache[ft] = nil
-end
-
-local function get_snippet_body(snip)
-  local body = {}
-  for _, node in ipairs(snip.nodes) do
-    if type(node.static_text) == "table" then
-      body[#body + 1] = table.concat(node.static_text, "\n")
-    end
-  end
-  return #body == 1 and snip.trigger or table.concat(body, "")
 end
 
 local function get_documentation(snip, data)
@@ -98,7 +86,6 @@ function source:get_completions(ctx, callback)
         for _, snip in pairs(tab) do
           if not snip.hidden then
             local complete_opts = {
-              word = snip.trigger,
               label = snip.trigger,
               kind = vim.lsp.protocol.CompletionItemKind.Snippet,
               data = {
@@ -108,16 +95,8 @@ function source:get_completions(ctx, callback)
                 show_condition = snip.show_condition,
                 auto = auto,
               },
+              insertText = "",
             }
-
-            if self.config.show_ghost_text then
-              complete_opts = vim.tbl_extend("error", complete_opts, {
-                insertTextFormat = vim.lsp.protocol.InsertTextFormat.Snippet,
-                insertTextMode = INSERT_TEXT_MODE_ASIS,
-                insertText = get_snippet_body(snip),
-              })
-            end
-
             ft_items[#ft_items + 1] = complete_opts
           end
         end
@@ -166,38 +145,11 @@ function source:execute(ctx, completion_item)
     snip = snip:get_pattern_expand_helper()
   end
 
-  local cursor = ctx.cursor
-  local line = require("luasnip.util.util").get_current_line_to_cursor()
-
-  cursor[1] = cursor[1] - 1
+  local line =
+    ctx.line:sub(ctx.bounds.start_col, ctx.bounds.start_col + ctx.bounds.length - 1)
   local expand_params = snip:matches(line)
 
-  local clear_region = {
-    from = {
-      cursor[1],
-      ctx.bounds.start_col - 1,
-    },
-    to = cursor,
-  }
-  if expand_params ~= nil then
-    if expand_params.clear_region ~= nil then
-      clear_region = expand_params.clear_region
-    else
-      if expand_params.trigger ~= nil then
-        clear_region = {
-          from = {
-            cursor[1],
-            cursor[2] - #expand_params.trigger,
-          },
-          to = cursor,
-        }
-      end
-    end
-  end
-  -- text cannot be cleared before, as TM_CURRENT_LINE and
-  -- TM_CURRENT_WORD couldn't be set correctly.
   require("luasnip").snip_expand(snip, {
-    clear_region = clear_region,
     expand_params = expand_params,
   })
 end
