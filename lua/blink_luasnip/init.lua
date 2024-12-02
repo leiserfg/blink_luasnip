@@ -95,7 +95,8 @@ function source:get_completions(ctx, callback)
                 show_condition = snip.show_condition,
                 auto = auto,
               },
-              insertText = "",
+              insertText = "$0", -- Workaround to keep SELECT mode
+              insertTextFormat = vim.lsp.protocol.InsertTextFormat.Snippet,
             }
             ft_items[#ft_items + 1] = complete_opts
           end
